@@ -7,7 +7,7 @@ export default { layout: AppLayout };
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import { ref, reactive, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
 import { csrfHeaders } from '@/csrf';
-import { connectRoom } from '@/composables/useLiveKit';
+import { getEcho } from '@/echo';
 
 const page = usePage();
 
@@ -22,10 +22,34 @@ const thread = ref(null);
 const input = ref('');
 const items = reactive([...(props.messages || [])]);
 let pollTimer = null;
-let dmRoom = null;
+let echoChannel = null;
+let echoChannelName = null;
 const myId = page.props?.auth?.user?.id ?? null;
 
-const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
+/* ---- Bildirim sesi (kullanıcı kapatabilir, localStorage) ---- */
+const SOUND_KEY = 'artirdim_msg_sound';
+const soundOn = ref(localStorage.getItem(SOUND_KEY) !== '0');
+function toggleSound() {
+    soundOn.value = !soundOn.value;
+    localStorage.setItem(SOUND_KEY, soundOn.value ? '1' : '0');
+}
+let audioCtx = null;
+function playBeep() {
+    if (!soundOn.value) return;
+    try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(660, audioCtx.currentTime);
+        o.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.12);
+        g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.15, audioCtx.currentTime + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(); o.stop(audioCtx.currentTime + 0.3);
+    } catch (e) { /* ses çalınamazsa sessiz geç */ }
+}
 
 function lastId() {
     return items.length ? items[items.length - 1].id : 0;
@@ -43,6 +67,10 @@ function push(m) {
     scrollBottom();
 }
 
+function markMineRead() {
+    items.forEach((m) => { if (m.mine) m.read = true; });
+}
+
 function send() {
     const body = input.value.trim();
     if (!body || !props.active) return;
@@ -58,52 +86,79 @@ function send() {
         .catch(() => {});
 }
 
+// Karşıdan gelen okunmamışları sunucuda okundu işaretle → gönderene "görüldü" olayı gider.
+function markReadOnServer() {
+    if (!props.active?.read_url) return;
+    fetch(props.active.read_url, {
+        method: 'POST',
+        headers: csrfHeaders({ 'Content-Type': 'application/json' }, page.props.csrf_token),
+        credentials: 'same-origin',
+    }).catch(() => {});
+}
+
 function poll() {
     if (!props.active) return;
     fetch(props.active.poll_url + '?after=' + lastId(), { headers: { Accept: 'application/json' } })
         .then((r) => r.json())
-        .then((d) => (d.messages || []).forEach(push))
+        .then((d) => {
+            const arr = d.messages || [];
+            let gotIncoming = false;
+            arr.forEach((m) => { push(m); if (!m.mine) gotIncoming = true; });
+            if (gotIncoming) playBeep();
+        })
         .catch(() => {});
 }
 
-// LiveKit veri kanalıyla anlık DM: karşı taraf konuşmayı açıksa mesaj polling'siz düşer.
-async function connectDm() {
-    if (dmRoom) { try { dmRoom.disconnect(); } catch (e) {} dmRoom = null; }
-    if (!props.active) return;
-    const convId = props.active.id;
-    try {
-        dmRoom = await connectRoom({
-            tokenUrl: '/livekit/dm-token',
-            tokenBody: { conversation: convId },
-            csrf: page.props?.csrf_token,
-            onData: (m) => {
-                if (!m || m.type !== 'dm' || m.conversation_id !== convId) return;
-                push({ id: m.id, body: m.body, mine: m.sender_id === myId, time: m.time });
-                if (m.id > lastId()) { /* dedup zaten push içinde */ }
-            },
+// Reverb WebSocket: özel konuşma kanalını dinle (message.sent + messages.read).
+function subscribeEcho() {
+    const echo = getEcho();
+    if (!echo || !props.active) return;
+    const name = 'conversation.' + props.active.id;
+    if (echoChannelName === name) return;
+    if (echoChannel) { try { echo.leave(echoChannelName); } catch (e) {} echoChannel = null; }
+    echoChannelName = name;
+    echoChannel = echo.private(name)
+        .listen('.message.sent', (e) => {
+            if (e.conversation_id !== props.active?.id) return;
+            const mine = e.sender_id === myId;
+            push({ id: e.id, body: e.body, mine, time: e.time, read: false });
+            if (!mine) {
+                if (document.hidden || !props.active) playBeep(); else playBeep();
+                markReadOnServer(); // sohbet açık → hemen okundu + gönderene bildir
+            }
+        })
+        .listen('.messages.read', (e) => {
+            if (e.conversation_id !== props.active?.id) return;
+            if (e.reader_id !== myId) markMineRead(); // karşı taraf okudu → benim mesajlarım "görüldü"
         });
-    } catch (e) { /* LiveKit yoksa polling yedeği devrede */ }
+}
+
+function teardownEcho() {
+    const echo = getEcho();
+    if (echo && echoChannelName) { try { echo.leave(echoChannelName); } catch (e) {} }
+    echoChannel = null;
+    echoChannelName = null;
 }
 
 onMounted(() => {
     if (props.active) {
         scrollBottom();
-        pollTimer = setInterval(poll, 2500);
-        connectDm();
+        subscribeEcho();
+        pollTimer = setInterval(poll, 12000); // Echo yedeği (bağlantı düşerse)
     }
 });
 
-// Konuşma değişince (Inertia aynı bileşeni koruduğu için) odayı yeniden bağla + son mesaja kaydır.
 watch(() => props.active?.id, (id, old) => {
     if (id === old) return;
     items.splice(0, items.length, ...(props.messages || []));
-    connectDm();
-    if (props.active) { scrollBottom(); if (!pollTimer) pollTimer = setInterval(poll, 2500); }
+    teardownEcho();
+    subscribeEcho();
+    if (props.active) { scrollBottom(); if (!pollTimer) pollTimer = setInterval(poll, 12000); }
 });
 
 onBeforeUnmount(() => {
     if (pollTimer) clearInterval(pollTimer);
-    if (dmRoom) { try { dmRoom.disconnect(); } catch (e) {} dmRoom = null; }
+    teardownEcho();
 });
 </script>
 
@@ -160,6 +215,11 @@ onBeforeUnmount(() => {
                                 <template v-else>{{ '@' + active.peer_username }}</template>
                             </div>
                         </div>
+                        <button type="button" class="msg-sound-toggle ms-auto" @click="toggleSound"
+                                data-testid="message-sound-toggle"
+                                :title="soundOn ? 'Bildirim sesi açık' : 'Bildirim sesi kapalı'">
+                            <i class="bi" :class="soundOn ? 'bi-volume-up' : 'bi-volume-mute'"></i>
+                        </button>
                     </div>
 
                     <div class="msg-thread" ref="thread">
@@ -171,7 +231,14 @@ onBeforeUnmount(() => {
                             :data-mid="m.id"
                         >
                             <div class="msg-bubble-body">{{ m.body }}</div>
-                            <div class="msg-bubble-time">{{ m.time }}</div>
+                            <div class="msg-bubble-time">
+                                {{ m.time }}
+                                <span v-if="m.mine" class="msg-receipt" :class="{ read: m.read }"
+                                      :data-testid="'msg-receipt-' + m.id"
+                                      :title="m.read ? 'Görüldü' : 'Gönderildi'">
+                                    <i class="bi" :class="m.read ? 'bi-check2-all' : 'bi-check2'"></i>
+                                </span>
+                            </div>
                         </div>
                     </div>
 

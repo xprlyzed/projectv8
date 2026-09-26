@@ -115,6 +115,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/{conversation}', 'show')->name('show');
         Route::post('/{conversation}', 'store')->middleware('throttle:60,1')->name('store');
         Route::get('/{conversation}/poll', 'poll')->name('poll');
+        Route::post('/{conversation}/read', 'markRead')->middleware('throttle:120,1')->name('read');
     });
 
     /*

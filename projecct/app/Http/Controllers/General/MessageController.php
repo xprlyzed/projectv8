@@ -27,7 +27,10 @@ class MessageController extends Controller
         if ($conversation && $conversation->exists) {
             abort_unless($conversation->hasParticipant($user), 403);
             $active = $conversation->load(['userOne', 'userTwo']);
-            $active->messages()->where('sender_id', '!=', $user->id)->whereNull('read_at')->update(['read_at' => now()]);
+            $markedRead = $active->messages()->where('sender_id', '!=', $user->id)->whereNull('read_at')->update(['read_at' => now()]);
+            if ($markedRead > 0) {
+                broadcast(new \App\Events\MessagesRead($active->id, $user->id, now()->toISOString()));
+            }
             $messages = $conversation->messages()->with('sender')->get();
         }
 
@@ -59,6 +62,7 @@ class MessageController extends Controller
                 'profile_url'  => $peer ? route('profile.public', $peer->username) : '#',
                 'store_url'    => route('messages.store', $active),
                 'poll_url'     => route('messages.poll', $active),
+                'read_url'     => route('messages.read', $active),
             ];
         }
 
@@ -67,6 +71,7 @@ class MessageController extends Controller
             'body' => $m->body,
             'mine' => $m->sender_id === $user->id,
             'time' => $m->created_at->format('H:i'),
+            'read' => $m->read_at !== null,
         ])->values();
 
         return Inertia::render('Messages/Index', [
@@ -108,15 +113,8 @@ class MessageController extends Controller
 
         $conversation->update(['last_message_at' => now()]);
 
-        // Gerçek-zamanlı: mesajı konuşma odasına anlık yayınla (karşı taraf açıksa polling'siz düşer).
-        \App\Services\LiveKitPublisher::publishToRoom('dm-'.$conversation->id, 'dm', [
-            'id'              => $message->id,
-            'conversation_id' => $conversation->id,
-            'sender_id'       => $user->id,
-            'body'            => $message->body,
-            'time'            => $message->created_at->format('H:i'),
-            'name'            => $user->name,
-        ]);
+        // Gerçek-zamanlı: mesajı özel konuşma kanalına anlık yayınla (Reverb WebSocket).
+        broadcast(new \App\Events\MessageSent($message))->toOthers();
 
         if ($request->wantsJson()) {
             return response()->json([
@@ -124,6 +122,7 @@ class MessageController extends Controller
                 'body'    => $message->body,
                 'mine'    => true,
                 'time'    => $message->created_at->format('H:i'),
+                'read'    => false,
             ]);
         }
 
@@ -149,6 +148,7 @@ class MessageController extends Controller
 
         if ($unread->exists()) {
             $unread->update(['read_at' => now()]);
+            broadcast(new \App\Events\MessagesRead($conversation->id, $user->id, now()->toISOString()));
         }
 
         return response()->json([
@@ -158,8 +158,30 @@ class MessageController extends Controller
                 'mine' => $m->sender_id === $user->id,
                 'time' => $m->created_at->format('H:i'),
                 'name' => $m->sender->name,
+                'read' => $m->read_at !== null,
             ]),
         ]);
+    }
+
+    /**
+     * Aktif sohbette karşıdan gelen okunmamış mesajları toplu okundu işaretler ve
+     * gönderene tek bir "okundu" olayı yayınlar (mesaj başına değil).
+     */
+    public function markRead(Request $request, Conversation $conversation)
+    {
+        $user = auth()->user();
+        abort_unless($conversation->hasParticipant($user), 403);
+
+        $marked = $conversation->messages()
+            ->where('sender_id', '!=', $user->id)
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
+
+        if ($marked > 0) {
+            broadcast(new \App\Events\MessagesRead($conversation->id, $user->id, now()->toISOString()));
+        }
+
+        return response()->json(['ok' => true, 'marked' => $marked]);
     }
 
     public function start(Request $request)

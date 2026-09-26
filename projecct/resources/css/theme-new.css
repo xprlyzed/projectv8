@@ -5374,6 +5374,12 @@ textarea:focus-visible,
 .msg-bubble { max-width: 72%; padding: 10px 14px; border-radius: 16px; position: relative; }
 .msg-bubble-body { font-size: var(--fs-sm); line-height: 1.45; word-wrap: break-word; white-space: pre-wrap; }
 .msg-bubble-time { font-size: 10px; opacity: .6; margin-top: 4px; text-align: right; }
+.msg-receipt { display: inline-flex; align-items: center; margin-inline-start: 4px; font-size: 12px; opacity: .85; vertical-align: middle; }
+.msg-receipt.read { color: #38bdf8; opacity: 1; }
+.msg-bubble.mine .msg-receipt { color: rgba(255,255,255,.75); }
+.msg-bubble.mine .msg-receipt.read { color: #7fe0ff; }
+.msg-sound-toggle { background: transparent; border: 1px solid var(--border); color: var(--muted); width: 36px; height: 36px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background .15s ease, color .15s ease; }
+.msg-sound-toggle:hover { background: rgba(21,94,239,.12); color: var(--primary); }
 .msg-bubble.mine { align-self: flex-end; background: var(--primary); color: #fff; border-bottom-right-radius: 5px; }
 .msg-bubble.theirs { align-self: flex-start; background: var(--bg-soft); border: 1px solid var(--border); border-bottom-left-radius: 5px; }
 .msg-compose { display: flex; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--border); }

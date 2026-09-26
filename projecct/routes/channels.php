@@ -23,3 +23,13 @@ Broadcast::channel('auction.{id}', function ($user, $id) {
         'name' => $user->name,
     ];
 });
+
+/**
+ * conversation.{id} — özel (private) DM kanalı.
+ * Yalnızca konuşmanın katılımcıları dinleyebilir.
+ */
+Broadcast::channel('conversation.{id}', function ($user, $id) {
+    $conversation = \App\Models\Conversation::find($id);
+
+    return $conversation && $conversation->hasParticipant($user);
+});

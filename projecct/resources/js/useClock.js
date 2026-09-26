@@ -16,9 +16,9 @@ export function formatCountdown(endsTs, nowTs) {
     const m = Math.floor((diff % 3600) / 60);
     const s = diff % 60;
     let text;
-    if (d > 0) text = `${d} gün ${h} saat`;
-    else if (h > 0) text = `${h} saat ${m} dk`;
-    else if (m > 0) text = `${m} dk ${String(s).padStart(2, '0')} sn`;
+    if (d > 0) text = h > 0 ? `${d} gün ${h} saat` : `${d} gün`;
+    else if (h > 0) text = m > 0 ? `${h} saat ${m} dk` : `${h} saat`;
+    else if (m > 0) text = s > 0 ? `${m} dk ${String(s).padStart(2, '0')} sn` : `${m} dk`;
     else text = `${s} sn`;
     return { text, critical: diff < 1800 };
 }

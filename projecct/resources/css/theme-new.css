@@ -4635,11 +4635,11 @@ textarea:focus-visible,
     display: flex;
     align-items: center;
     gap: 5px;
-    background: rgba(16, 185, 129, .15);
-    border: 1px solid rgba(16, 185, 129, .28);
-    color: #10b981;
+    background: rgba(239, 68, 68, .18);
+    border: 1px solid rgba(239, 68, 68, .40);
+    color: #ff5a5a;
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 800;
     padding: 3px 9px;
     border-radius: 20px;
     letter-spacing: .3px;
@@ -4649,7 +4649,7 @@ textarea:focus-visible,
 .idx-live-badge .dot {
     width: 5px;
     height: 5px;
-    background: #10b981;
+    background: #ff3b3b;
     border-radius: 50%;
     animation: lp 1.6s infinite;
 }
@@ -4664,9 +4664,9 @@ textarea:focus-visible,
     top: 9px;
     left: 9px;
     z-index: 3;
-    background: rgba(248, 113, 113, .12);
-    border: 1px solid rgba(248, 113, 113, .25);
-    color: #f87171;
+    background: rgba(148, 163, 184, .18);
+    border: 1px solid rgba(148, 163, 184, .30);
+    color: #cbd5e1;
     font-size: 10px;
     font-weight: 700;
     padding: 3px 9px;
@@ -4682,20 +4682,20 @@ textarea:focus-visible,
     left: 9px;
     z-index: 3;
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 800;
     padding: 3px 9px;
     border-radius: 20px;
     letter-spacing: .3px;
     backdrop-filter: blur(6px);
 }
 .idx-active-badge {
-    background: rgba(21, 94, 239, .15);
-    border: 1px solid rgba(21, 94, 239, .30);
-    color: #4f83ff;
+    background: rgba(16, 185, 129, .18);
+    border: 1px solid rgba(16, 185, 129, .38);
+    color: #16d391;
 }
 .idx-planned-badge {
-    background: rgba(245, 166, 35, .15);
-    border: 1px solid rgba(245, 166, 35, .30);
+    background: rgba(245, 158, 11, .18);
+    border: 1px solid rgba(245, 158, 11, .38);
     color: #f5a623;
 }
 
@@ -4766,10 +4766,11 @@ textarea:focus-visible,
 }
 
 .idx-bid-val {
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 800;
-    color: var(--primary);
+    color: var(--primary-strong, #2563ff);
     line-height: 1;
+    letter-spacing: -.2px;
 }
 
 .idx-timer-lbl {
@@ -4783,8 +4784,8 @@ textarea:focus-visible,
 
 .idx-timer-val {
     font-size: 12px;
-    font-weight: 700;
-    color: var(--text);
+    font-weight: 800;
+    color: #f5a623;
     font-variant-numeric: tabular-nums;
     text-align: right;
 }
